@@ -172,10 +172,36 @@ def refresh_tokens_endpoint():
 
 # === Startup ===
 
-async def startup():
-    await initialize_tokens()
-    asyncio.create_task(refresh_tokens_periodically())
+# === Production Startup (Railway + Gunicorn Safe) ===
 
-if __name__ == '__main__':
-    asyncio.run(startup())
-    app.run(host='0.0.0.0', port=5001, debug=True)
+import os
+import threading
+import asyncio
+
+
+def background_event_loop():
+    """
+    Runs a dedicated asyncio loop in background thread.
+    Initializes tokens once and keeps refreshing them.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    async def runner():
+        await initialize_tokens()
+        asyncio.create_task(refresh_tokens_periodically())
+
+    loop.run_until_complete(runner())
+    loop.run_forever()
+
+
+# Start background thread immediately when module loads
+threading.Thread(target=background_event_loop, daemon=True).start()
+
+
+if __name__ == "__main__":
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 5000)),
+        debug=False
+    )
